@@ -14,7 +14,7 @@ STATUS_PLAYING = 2
 
 # Sizes
 SIZE_SCREEN = (320, 240)
-HEADER_HEIGHT = 40
+CONTROL_HEIGHT = 40
 
 # Colors
 COLOR_BACKGROUND = (51, 51, 51)
@@ -68,23 +68,76 @@ client.update()
 # load list of available playlists
 playlists = client.listplaylists()
 playlist_page = 1
-playlist_buttons = ()
+playlist_buttons = []
 
 status = STATUS_PLAYLIST
+
+# classes for buttons
+class Button:
+    def create_button(self, surface, color, x, y, length, height, width, text, text_color):
+        surface = self.draw_button(surface, color, length, height, x, y, width)
+        surface = self.write_text(surface, text, text_color, length, height, x, y)
+        self.rect = pygame.Rect(x,y, length, height)
+        return surface
+
+    def write_text(self, surface, text, text_color, length, height, x, y):
+        font_size = int(length//len(text))
+        myFont = pygame.font.SysFont("Calibri", font_size)
+        myText = myFont.render(text, 1, text_color)
+        surface.blit(myText, ((x+length/2) - myText.get_width()/2, (y+height/2) - myText.get_height()/2))
+        return surface
+
+    def draw_button(self, surface, color, length, height, x, y, width):           
+        for i in range(1,10):
+            s = pygame.Surface((length+(i*2),height+(i*2)))
+            s.fill(color)
+            alpha = (255/(i+2))
+            if alpha <= 0:
+                alpha = 1
+            s.set_alpha(alpha)
+            pygame.draw.rect(s, color, (x-i,y-i,length+i,height+i), width)
+            surface.blit(s, (x-i,y-i))
+        pygame.draw.rect(surface, color, (x,y,length,height), 0)
+        pygame.draw.rect(surface, (190,190,190), (x,y,length,height), 1)  
+        return surface
+
+    def clicked(self, mouse):
+        if mouse[0] > self.rect.topleft[0]:
+            if mouse[1] > self.rect.topleft[1]:
+                if mouse[0] < self.rect.bottomright[0]:
+                    if mouse[1] < self.rect.bottomright[1]:
+                        print("Some button was pressed!")
+                        return True
+                    else: return False
+                else: return False
+            else: return False
+        else: return False
+
+
 
 # functions for drawing different bits
 def draw_playlist():
     # draw playlist header
     playlist_header_text = font_header.render("Select Playlist", True, COLOR_TEXT)
-    playlist_header = pygame.surface.Surface((SIZE_SCREEN[0], HEADER_HEIGHT))
-    pygame.draw.rect(playlist_header, COLOR_LINE, Rect(0, 0, SIZE_SCREEN[0], HEADER_HEIGHT), 1)
+    pygame.draw.rect(screen, COLOR_LINE, Rect(-1, -1, SIZE_SCREEN[0]+2, CONTROL_HEIGHT+2), 1)
 
-    screen.blit(playlist_header, (0, 0))
-    screen.blit(playlist_header_text, ((SIZE_SCREEN[0]/2)-(playlist_header_text.get_width()/2)+((icon_playlist_header.get_width()+5)/2),(HEADER_HEIGHT/2)-(playlist_header_text.get_height()/2)))
-    screen.blit(icon_playlist_header, ((SIZE_SCREEN[0]/2)-((playlist_header_text.get_width()+icon_playlist_header.get_width()+5)/2),(HEADER_HEIGHT/2)-(icon_playlist_header.get_height()/2)))
+    screen.blit(playlist_header_text, ((SIZE_SCREEN[0]/2)-(playlist_header_text.get_width()/2)+((icon_playlist_header.get_width()+10)/2),(CONTROL_HEIGHT/2)-(playlist_header_text.get_height()/2)))
+    screen.blit(icon_playlist_header, ((SIZE_SCREEN[0]/2)-((playlist_header_text.get_width()+icon_playlist_header.get_width()+10)/2),(CONTROL_HEIGHT/2)-(icon_playlist_header.get_height()/2)))
+
+    # clear existing the playlist buttons
+    if len(playlist_buttons) > 0:
+        for item in range(len(playlist_buttons)-1,0):
+            del playlist_buttons[item]
+    
+    count = 1
+    for item in range((playlist_page - 1) * 5, min(((playlist_page - 1) * 5) + 5, len(playlists))):
+        button = Button()
+        button.create_button(screen, COLOR_BACKGROUND, 0, count * CONTROL_HEIGHT, SIZE_SCREEN[0] - CONTROL_HEIGHT, CONTROL_HEIGHT, 1, playlists[item]['playlist'], COLOR_TEXT)
+        playlist_buttons.append(button)
+        count += 1
 
 
-# enter loop while drawing the AUDIO gui.
+# enter loop while drawing the AUDIO gui
 while True:
     # check for events.
     for event in pygame.event.get():
