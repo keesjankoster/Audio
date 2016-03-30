@@ -78,8 +78,6 @@ client.update()
 playlists = client.listplaylists()
 playlist_page = 1
 playlist_buttons = []
-playlist_up = None
-playlist_down = None
 
 status = STATUS_PLAYLIST
 
@@ -122,13 +120,16 @@ class Button:
             if mouse[1] > self.rect.topleft[1]:
                 if mouse[0] < self.rect.bottomright[0]:
                     if mouse[1] < self.rect.bottomright[1]:
-                        print("Some button was pressed!")
                         return True
                     else: return False
                 else: return False
             else: return False
         else: return False
 
+
+# Global Button variables
+playlist_up = Button()
+playlist_down = Button()
 
 
 # functions for drawing different bits
@@ -148,10 +149,7 @@ def draw_playlist():
     pygame.draw.rect(screen, COLOR_LIGHT, Rect(SIZE_SCREEN[0] - CONTROL_HEIGHT, CONTROL_HEIGHT*2+indicator_height*(playlist_page-1), CONTROL_HEIGHT, indicator_height), 0)
 
     # page up/down buttons
-    playlist_up = Button()
     playlist_up.create_button(screen, SIZE_SCREEN[0] - (CONTROL_HEIGHT+1), CONTROL_HEIGHT, CONTROL_HEIGHT+2, CONTROL_HEIGHT+1, None, ICON_UP)
-
-    playlist_down = Button()
     playlist_down.create_button(screen, SIZE_SCREEN[0] - (CONTROL_HEIGHT+1), SIZE_SCREEN[1] - CONTROL_HEIGHT, CONTROL_HEIGHT+2, CONTROL_HEIGHT+1, None, ICON_DOWN)
     
 
@@ -184,6 +182,18 @@ while True:
             # exit the AUDIO gui
             pygame.quit()
             exit()
+        elif event.type == MOUSEBUTTONDOWN:
+            if status == STATUS_PLAYLIST:
+                if playlist_up.clicked(pygame.mouse.get_pos()):
+                    if playlist_page > 1:
+                        playlist_page -= 1
+                elif playlist_down.clicked(pygame.mouse.get_pos()):
+                    if playlist_page < math.ceil(len(playlists)/5):
+                        playlist_page += 1
+                
+
+                    
+            
 
     # draw background
     screen.blit(background, (0,0))
