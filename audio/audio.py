@@ -2,6 +2,7 @@ import pygame
 from pygame.locals import *
 from mpd import MPDClient
 import codecs
+import math
 from sys import exit
 from time import sleep
 
@@ -15,11 +16,14 @@ STATUS_PLAYING = 2
 # Sizes
 SIZE_SCREEN = (320, 240)
 CONTROL_HEIGHT = 40
+SEPERATOR = 10
 
 # Colors
 COLOR_BACKGROUND = (51, 51, 51)
+COLOR_LIGHT = (75, 75, 75)
 COLOR_TEXT = (255, 255, 255)
 COLOR_LINE = (17, 17, 17)
+
 
 
 # initialise pygame.
@@ -53,8 +57,13 @@ font_header = pygame.font.Font("resources/OpenSans-Light.ttf", 18);
 font_icon = pygame.font.Font("resources/fontawesome-webfont.ttf", 18);
 
 # create icon surfaces
-icon_playlist_header = font_icon.render("\uf001", True, COLOR_TEXT)
-icon_playlist = font_icon.render("\uf00b", True, COLOR_TEXT)
+ICON_MUSIC = font_icon.render("\uf001", True, COLOR_TEXT)
+ICON_PLAYLIST = font_icon.render("\uf03a", True, COLOR_TEXT)
+ICON_PLAY = font_icon.render("\uf04b", True, COLOR_TEXT)
+ICON_PAUSE = font_icon.render("\uf04c", True, COLOR_TEXT)
+ICON_SHUTDOWN = font_icon.render("\uf011", True, COLOR_TEXT)
+ICON_UP = font_icon.render("\uf077", True, COLOR_TEXT)
+ICON_DOWN = font_icon.render("\uf078", True, COLOR_TEXT)
 
 # create MPD client object and connect to the local MPD server
 client = MPDClient()               
@@ -69,36 +78,43 @@ client.update()
 playlists = client.listplaylists()
 playlist_page = 1
 playlist_buttons = []
+playlist_up = None
+playlist_down = None
 
 status = STATUS_PLAYLIST
 
 # classes for buttons
 class Button:
-    def create_button(self, surface, color, x, y, length, height, width, text, text_color):
-        surface = self.draw_button(surface, color, length, height, x, y, width)
-        surface = self.write_text(surface, text, text_color, length, height, x, y)
-        self.rect = pygame.Rect(x,y, length, height)
+    def create_button(self, surface, x, y, width, height, text, icon):
+        # draw the button surface and outline
+        surface = self.draw_button(surface, width, height, x, y)
+        # draw the text and/or icon
+        surface = self.draw_contents(surface, text, icon, width, height, x, y)
+        # store the rect of the button
+        self.rect = pygame.Rect(x,y, width, height)
         return surface
 
-    def write_text(self, surface, text, text_color, length, height, x, y):
-        font_size = int(length//len(text))
-        myFont = pygame.font.SysFont("Calibri", font_size)
-        myText = myFont.render(text, 1, text_color)
-        surface.blit(myText, ((x+length/2) - myText.get_width()/2, (y+height/2) - myText.get_height()/2))
+    def draw_contents(self, surface, text, icon, width, height, x, y):
+        if text != None:
+            # render the text for the button and make sure it fits
+            text_surface = font_main.render(text, True, COLOR_TEXT)
+            while text_surface.get_width() > width:
+                text_surface = font_main.render(text[:len(text)-4]+"...", True, COLOR_TEXT)
+
+            # draw text on button
+            surface.blit(text_surface, ((x+CONTROL_HEIGHT), y+(height/2) - text_surface.get_height()/2))
+
+        # draw icon on button
+        if icon != None:
+            surface.blit(icon, (x+(CONTROL_HEIGHT/2)-(icon.get_width()/2), (y+height/2) - icon.get_height()/2))
+
         return surface
 
-    def draw_button(self, surface, color, length, height, x, y, width):           
-        for i in range(1,10):
-            s = pygame.Surface((length+(i*2),height+(i*2)))
-            s.fill(color)
-            alpha = (255/(i+2))
-            if alpha <= 0:
-                alpha = 1
-            s.set_alpha(alpha)
-            pygame.draw.rect(s, color, (x-i,y-i,length+i,height+i), width)
-            surface.blit(s, (x-i,y-i))
-        pygame.draw.rect(surface, color, (x,y,length,height), 0)
-        pygame.draw.rect(surface, (190,190,190), (x,y,length,height), 1)  
+    def draw_button(self, surface, width, height, x, y):           
+        # draw button background
+        pygame.draw.rect(surface, COLOR_BACKGROUND, (x,y,width,height), 0)
+        # draw button outline
+        pygame.draw.rect(surface, COLOR_LINE, (x,y,width,height), 1)  
         return surface
 
     def clicked(self, mouse):
@@ -121,8 +137,24 @@ def draw_playlist():
     playlist_header_text = font_header.render("Select Playlist", True, COLOR_TEXT)
     pygame.draw.rect(screen, COLOR_LINE, Rect(-1, -1, SIZE_SCREEN[0]+2, CONTROL_HEIGHT+2), 1)
 
-    screen.blit(playlist_header_text, ((SIZE_SCREEN[0]/2)-(playlist_header_text.get_width()/2)+((icon_playlist_header.get_width()+10)/2),(CONTROL_HEIGHT/2)-(playlist_header_text.get_height()/2)))
-    screen.blit(icon_playlist_header, ((SIZE_SCREEN[0]/2)-((playlist_header_text.get_width()+icon_playlist_header.get_width()+10)/2),(CONTROL_HEIGHT/2)-(icon_playlist_header.get_height()/2)))
+    screen.blit(playlist_header_text, ((SIZE_SCREEN[0]/2)-(playlist_header_text.get_width()/2)+((ICON_MUSIC.get_width()+SEPERATOR)/2),(CONTROL_HEIGHT/2)-(playlist_header_text.get_height()/2)))
+    screen.blit(ICON_MUSIC, ((SIZE_SCREEN[0]/2)-((playlist_header_text.get_width()+ICON_MUSIC.get_width()+SEPERATOR)/2),(CONTROL_HEIGHT/2)-(ICON_MUSIC.get_height()/2)))
+
+    # page controls
+    pygame.draw.rect(screen, COLOR_LINE, Rect(SIZE_SCREEN[0]-(CONTROL_HEIGHT+1), CONTROL_HEIGHT, CONTROL_HEIGHT+2, SIZE_SCREEN[1]-CONTROL_HEIGHT+2), 1)
+    
+    numpages = math.ceil(len(playlists)/5)
+    indicator_height = int((CONTROL_HEIGHT * 3) / numpages)
+    pygame.draw.rect(screen, COLOR_LIGHT, Rect(SIZE_SCREEN[0] - CONTROL_HEIGHT, CONTROL_HEIGHT*2+indicator_height*(playlist_page-1), CONTROL_HEIGHT, indicator_height), 0)
+
+    # page up/down buttons
+    playlist_up = Button()
+    playlist_up.create_button(screen, SIZE_SCREEN[0] - (CONTROL_HEIGHT+1), CONTROL_HEIGHT, CONTROL_HEIGHT+2, CONTROL_HEIGHT+1, None, ICON_UP)
+
+    playlist_down = Button()
+    playlist_down.create_button(screen, SIZE_SCREEN[0] - (CONTROL_HEIGHT+1), SIZE_SCREEN[1] - CONTROL_HEIGHT, CONTROL_HEIGHT+2, CONTROL_HEIGHT+1, None, ICON_DOWN)
+    
+
 
     # clear existing the playlist buttons
     if len(playlist_buttons) > 0:
@@ -132,9 +164,11 @@ def draw_playlist():
     count = 1
     for item in range((playlist_page - 1) * 5, min(((playlist_page - 1) * 5) + 5, len(playlists))):
         button = Button()
-        button.create_button(screen, COLOR_BACKGROUND, 0, count * CONTROL_HEIGHT, SIZE_SCREEN[0] - CONTROL_HEIGHT, CONTROL_HEIGHT, 1, playlists[item]['playlist'], COLOR_TEXT)
+        button.create_button(screen, 0, count * CONTROL_HEIGHT, SIZE_SCREEN[0] - CONTROL_HEIGHT, CONTROL_HEIGHT+1, playlists[item]['playlist'], ICON_PLAYLIST)
         playlist_buttons.append(button)
         count += 1
+
+   
 
 
 # enter loop while drawing the AUDIO gui
