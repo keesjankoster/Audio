@@ -17,7 +17,7 @@ class Settings:
     STATUS_PLAYING = 2
 
     # Sizes
-    SIZE_SCREEN = (320, 240)
+    SIZE_SCREEN = (800, 480)
     CONTROL_HEIGHT = 40
     SEPARATOR = 10
 
