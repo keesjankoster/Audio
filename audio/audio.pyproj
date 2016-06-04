@@ -25,16 +25,21 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="audio.py" />
+    <Compile Include="bus_finder.py" />
+    <Compile Include="dbus_connection.py" />
+    <Compile Include="omxplayer.py" />
   </ItemGroup>
   <ItemGroup>
     <InterpreterReference Include="{2af0f10d-7135-4994-9156-5d01c9c11b7e}\3.5" />
   </ItemGroup>
   <ItemGroup>
+    <Folder Include="install\" />
     <Folder Include="music\" />
     <Folder Include="playlists\" />
     <Folder Include="resources\" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="install\boot.txt" />
     <Content Include="resources\fontawesome-webfont.ttf" />
     <Content Include="resources\OpenSans-Light.ttf" />
   </ItemGroup>

@@ -9,3 +9,8 @@ Python GUI for MPD on Raspberry Pi with PiTFT and the like!
 
 ![alt tag](https://github.com/keesjankoster/Audio/raw/master/doc/screen3.png)
 
+
+## Config
+
+"disable_audio_dither=1" to config.txt
+
