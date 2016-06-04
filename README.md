@@ -1,5 +1,5 @@
 # Audio
-Python GUI for MPD on Raspberry Pi with PiTFT and the like!
+Python GUI for loading playlists and playing MP3 songs on a PiTFT and the like!
 
 ## Screenshots
 
