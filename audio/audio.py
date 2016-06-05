@@ -9,6 +9,8 @@ import math
 from sys import exit
 from time import sleep
 
+from dbus import DBusException
+
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler 
 
@@ -260,87 +262,106 @@ class Audio(FileSystemEventHandler):
     
     # draw songs of a playlist
     def draw_player(self):
-        # draw the play controls
-        pygame.draw.rect(self.screen, Settings.COLOR_LINE, Rect(-1, Settings.SIZE_SCREEN[1]-Settings.CONTROL_HEIGHT, Settings.SIZE_SCREEN[0]+2, Settings.CONTROL_HEIGHT+2), 1)
+        try:
+            # return to playlist button
+            self.playing_playlist.create_button('PLAYLIST', self.screen, Settings.SIZE_SCREEN[0] - (Settings.CONTROL_HEIGHT+1), Settings.SIZE_SCREEN[1] - Settings.CONTROL_HEIGHT, Settings.CONTROL_HEIGHT+2, Settings.CONTROL_HEIGHT+1, None, None, Settings.ICON_PLAYLIST)
 
-        # play/pause button
-        if self.player.is_playing():
-            icon = Settings.ICON_PAUSE
-        else:
-            icon = Settings.ICON_PLAY
-
-        self.playing_play.create_button('PLAY', self.screen, 0, Settings.SIZE_SCREEN[1] - Settings.CONTROL_HEIGHT, Settings.CONTROL_HEIGHT+2, Settings.CONTROL_HEIGHT+1, None, None, icon)
-
-        # get elapsed time in seconds
-        elapsed_time = self.player.position()
-        if elapsed_time < 0:
-            elapsed_time = 0
+             # page controls
+            pygame.draw.rect(self.screen, Settings.COLOR_LINE, Rect(Settings.SIZE_SCREEN[0]-(Settings.CONTROL_HEIGHT+1), -1, Settings.CONTROL_HEIGHT+2, Settings.SIZE_SCREEN[1]-Settings.CONTROL_HEIGHT+2), 1)
     
-        # format subtitle as mm:ss
-        minutes = math.floor(elapsed_time / 60)
-        seconds = elapsed_time - (minutes * 60)
-        elapsed = Settings.FONT_MAIN.render("{:02.0f}:{:02.0f}".format(minutes, seconds), True, Settings.COLOR_TEXT)
+            numpages = math.ceil(len(self.songs)/Settings.ITEMS)
+            indicator_height = int((Settings.CONTROL_HEIGHT * (Settings.ITEMS-2)) / numpages)
+            pygame.draw.rect(self.screen, Settings.COLOR_LIGHT, Rect(Settings.SIZE_SCREEN[0] - Settings.CONTROL_HEIGHT, Settings.CONTROL_HEIGHT+indicator_height*(self.playing_page-1), Settings.CONTROL_HEIGHT, indicator_height), 0)
 
-        self.screen.blit(elapsed, (Settings.CONTROL_HEIGHT+Settings.SEPARATOR,(Settings.SIZE_SCREEN[1] - Settings.CONTROL_HEIGHT)+(Settings.CONTROL_HEIGHT/2-elapsed.get_height()/2)))
-
-         # get length in seconds
-        length_time = self.player.duration()
+            # page up/down buttons
+            self.page_up.create_button('UP', self.screen, Settings.SIZE_SCREEN[0] - (Settings.CONTROL_HEIGHT+1), 0, Settings.CONTROL_HEIGHT+2, Settings.CONTROL_HEIGHT+1, None, None, Settings.ICON_UP)
+            self.page_down.create_button('DOWN', self.screen, Settings.SIZE_SCREEN[0] - (Settings.CONTROL_HEIGHT+1), Settings.SIZE_SCREEN[1] - Settings.CONTROL_HEIGHT*2, Settings.CONTROL_HEIGHT+2, Settings.CONTROL_HEIGHT+1, None, None, Settings.ICON_DOWN)
     
-        # format subtitle as mm:ss
-        minutes = math.floor(length_time / 60)
-        seconds = length_time - (minutes * 60)
-        length = Settings.FONT_MAIN.render("{:02.0f}:{:02.0f}".format(minutes, seconds), True, Settings.COLOR_TEXT)
+             # clear existing the song buttons
+            self.playing_buttons.clear()
 
-        self.screen.blit(length, (Settings.SIZE_SCREEN[0]-(Settings.CONTROL_HEIGHT+Settings.SEPARATOR+length.get_width()),(Settings.SIZE_SCREEN[1]-Settings.CONTROL_HEIGHT)+(Settings.CONTROL_HEIGHT/2-length.get_height()/2)))
-
-        # set the playing rect
-        width = Settings.SIZE_SCREEN[0]-(Settings.CONTROL_HEIGHT+Settings.SEPARATOR+elapsed.get_width()+Settings.SEPARATOR+Settings.SEPARATOR+length.get_width()+Settings.SEPARATOR+Settings.CONTROL_HEIGHT)
-        self.playing_rect = Rect((Settings.CONTROL_HEIGHT+Settings.SEPARATOR+elapsed.get_width()+Settings.SEPARATOR), (Settings.SIZE_SCREEN[1]-Settings.CONTROL_HEIGHT+Settings.SEPARATOR),width,Settings.CONTROL_HEIGHT-2*Settings.SEPARATOR)
-        pygame.draw.rect(self.screen, Settings.COLOR_LIGHT, self.playing_rect, 0)
-    
-        elapsed_rect = self.playing_rect.inflate(-((1-(elapsed_time/length_time))*width),0).move(-((1-(elapsed_time/length_time))*width)/2,0)
-        pygame.draw.rect(self.screen, Settings.COLOR_HIGHLIGHT, elapsed_rect, 0)
-
-        # return to playlist button
-        self.playing_playlist.create_button('PLAYLIST', self.screen, Settings.SIZE_SCREEN[0] - (Settings.CONTROL_HEIGHT+1), Settings.SIZE_SCREEN[1] - Settings.CONTROL_HEIGHT, Settings.CONTROL_HEIGHT+2, Settings.CONTROL_HEIGHT+1, None, None, Settings.ICON_PLAYLIST)
-
-         # page controls
-        pygame.draw.rect(self.screen, Settings.COLOR_LINE, Rect(Settings.SIZE_SCREEN[0]-(Settings.CONTROL_HEIGHT+1), -1, Settings.CONTROL_HEIGHT+2, Settings.SIZE_SCREEN[1]-Settings.CONTROL_HEIGHT+2), 1)
-    
-        numpages = math.ceil(len(self.songs)/Settings.ITEMS)
-        indicator_height = int((Settings.CONTROL_HEIGHT * (Settings.ITEMS-2)) / numpages)
-        pygame.draw.rect(self.screen, Settings.COLOR_LIGHT, Rect(Settings.SIZE_SCREEN[0] - Settings.CONTROL_HEIGHT, Settings.CONTROL_HEIGHT+indicator_height*(self.playing_page-1), Settings.CONTROL_HEIGHT, indicator_height), 0)
-
-        # page up/down buttons
-        self.page_up.create_button('UP', self.screen, Settings.SIZE_SCREEN[0] - (Settings.CONTROL_HEIGHT+1), 0, Settings.CONTROL_HEIGHT+2, Settings.CONTROL_HEIGHT+1, None, None, Settings.ICON_UP)
-        self.page_down.create_button('DOWN', self.screen, Settings.SIZE_SCREEN[0] - (Settings.CONTROL_HEIGHT+1), Settings.SIZE_SCREEN[1] - Settings.CONTROL_HEIGHT*2, Settings.CONTROL_HEIGHT+2, Settings.CONTROL_HEIGHT+1, None, None, Settings.ICON_DOWN)
-    
-         # clear existing the song buttons
-        self.playing_buttons.clear()
-
-        count = 0
-        for item in range((self.playing_page - 1) * Settings.ITEMS, min(((self.playing_page - 1) * Settings.ITEMS) + Settings.ITEMS, len(self.songs))):
-            # get meta data from song
-            audio = MP3(os.path.join(Settings.PATH_MUSIC, self.songs[item][0]))
-            time = audio.info.length
+            count = 0
+            for item in range((self.playing_page - 1) * Settings.ITEMS, min(((self.playing_page - 1) * Settings.ITEMS) + Settings.ITEMS, len(self.songs))):
+                # get meta data from song
+                audio = MP3(os.path.join(Settings.PATH_MUSIC, self.songs[item][0]))
+                time = audio.info.length
                         
-            # format subtitle as mm:ss
-            minutes = math.floor(int(time) / 60)
-            seconds = int(time) - (minutes * 60)
-            subtitle = "{:0>2d}:{:0>2d}".format(minutes, seconds)
+                # format subtitle as mm:ss
+                minutes = math.floor(int(time) / 60)
+                seconds = int(time) - (minutes * 60)
+                subtitle = "{:0>2d}:{:0>2d}".format(minutes, seconds)
 
-            title = os.path.splitext(self.songs[item][0])[0]
+                title = os.path.splitext(self.songs[item][0])[0]
 
-            # check if this is the current song
-            if self.current_song[1] == self.songs[item][1]:
-                icon = Settings.ICON_CURRENT
+                # check if this is the current song
+                if self.current_song[1] == self.songs[item][1]:
+                    icon = Settings.ICON_CURRENT
+                else:
+                    icon = Settings.ICON_SONG
+
+                button = Button()
+                button.create_button(self.songs[item], self.screen, 0, count * Settings.CONTROL_HEIGHT, Settings.SIZE_SCREEN[0] - Settings.CONTROL_HEIGHT, Settings.CONTROL_HEIGHT+1, title, subtitle, icon)
+                self.playing_buttons.append(button)
+                count += 1
+
+            # draw the play controls
+            pygame.draw.rect(self.screen, Settings.COLOR_LINE, Rect(-1, Settings.SIZE_SCREEN[1]-Settings.CONTROL_HEIGHT, Settings.SIZE_SCREEN[0]+2, Settings.CONTROL_HEIGHT+2), 1)
+
+            # play/pause button
+            if self.player.is_playing():
+                icon = Settings.ICON_PAUSE
             else:
-                icon = Settings.ICON_SONG
+                icon = Settings.ICON_PLAY
 
-            button = Button()
-            button.create_button(self.songs[item], self.screen, 0, count * Settings.CONTROL_HEIGHT, Settings.SIZE_SCREEN[0] - Settings.CONTROL_HEIGHT, Settings.CONTROL_HEIGHT+1, title, subtitle, icon)
-            self.playing_buttons.append(button)
-            count += 1
+            self.playing_play.create_button('PLAY', self.screen, 0, Settings.SIZE_SCREEN[1] - Settings.CONTROL_HEIGHT, Settings.CONTROL_HEIGHT+2, Settings.CONTROL_HEIGHT+1, None, None, icon)
+
+             # get elapsed time in seconds
+            elapsed_time = self.player.position()
+            if elapsed_time < 0:
+                elapsed_time = 0
+    
+            # format subtitle as mm:ss
+            minutes = math.floor(elapsed_time / 60)
+            seconds = elapsed_time - (minutes * 60)
+            elapsed = Settings.FONT_MAIN.render("{:02.0f}:{:02.0f}".format(minutes, seconds), True, Settings.COLOR_TEXT)
+
+            self.screen.blit(elapsed, (Settings.CONTROL_HEIGHT+Settings.SEPARATOR,(Settings.SIZE_SCREEN[1] - Settings.CONTROL_HEIGHT)+(Settings.CONTROL_HEIGHT/2-elapsed.get_height()/2)))
+
+             # get length in seconds
+            length_time = self.player.duration()
+    
+            # format subtitle as mm:ss
+            minutes = math.floor(length_time / 60)
+            seconds = length_time - (minutes * 60)
+            length = Settings.FONT_MAIN.render("{:02.0f}:{:02.0f}".format(minutes, seconds), True, Settings.COLOR_TEXT)
+
+            self.screen.blit(length, (Settings.SIZE_SCREEN[0]-(Settings.CONTROL_HEIGHT+Settings.SEPARATOR+length.get_width()),(Settings.SIZE_SCREEN[1]-Settings.CONTROL_HEIGHT)+(Settings.CONTROL_HEIGHT/2-length.get_height()/2)))
+
+            # set the playing rect
+            width = Settings.SIZE_SCREEN[0]-(Settings.CONTROL_HEIGHT+Settings.SEPARATOR+elapsed.get_width()+Settings.SEPARATOR+Settings.SEPARATOR+length.get_width()+Settings.SEPARATOR+Settings.CONTROL_HEIGHT)
+            self.playing_rect = Rect((Settings.CONTROL_HEIGHT+Settings.SEPARATOR+elapsed.get_width()+Settings.SEPARATOR), (Settings.SIZE_SCREEN[1]-Settings.CONTROL_HEIGHT+Settings.SEPARATOR),width,Settings.CONTROL_HEIGHT-2*Settings.SEPARATOR)
+            pygame.draw.rect(self.screen, Settings.COLOR_LIGHT, self.playing_rect, 0)
+    
+            elapsed_rect = self.playing_rect.inflate(-((1-(elapsed_time/length_time))*width),0).move(-((1-(elapsed_time/length_time))*width)/2,0)
+            pygame.draw.rect(self.screen, Settings.COLOR_HIGHLIGHT, elapsed_rect, 0)
+        
+        except:
+            # find next song
+            item = 0
+            for song in self.songs:
+                item += 1
+                
+                if song[1] == self.current_song[1]:
+                    if item == len(self.songs):
+                        item = 0
+                    
+                    self.current_song = self.songs[item]
+                    self.player = OMXPlayer(os.path.join(Settings.PATH_MUSIC, self.current_song[0]),['--no-osd'])
+
+                    self.playing_page = math.ceil((item + 1) / Settings.ITEMS)
+
+                    break
+
 
     def load_playlist_items(self, path):
         self.playlist_items.clear()
@@ -405,6 +426,13 @@ class Audio(FileSystemEventHandler):
                             if self.playlist_page < math.ceil(len(self.playlist_items)/(Settings.ITEMS-(self.playlist_page > 1 if 0 else 1))):
                                 self.playlist_page += 1
                         elif self.shutdown.clicked(pygame.mouse.get_pos()):
+                            # close omxplayer
+                            if self.player:
+                                self.player.quit()
+                            # exit the AUDIO gui
+                            observer.stop()
+                            pygame.quit()
+
                             # Shutdown
                             os.system('shutdown now -h')
                         else:

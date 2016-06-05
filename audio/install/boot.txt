@@ -30,3 +30,9 @@ Add the following lines to the [SeatDefaults] section:
 xserver-command=X -s 0 dpms
 
 Hope this helps, I've used this on my Pi's to load straight into a refreshing web browser (additional steps required for loading browser not listed here), but it essentially removes anything thats annoying except for my custom splash screen and the webpage that loads.
+
+
+Disable Login Prompt
+=================
+
+$ sudo systemctl disable getty@tty1.service
