@@ -291,7 +291,7 @@ class Audio(FileSystemEventHandler):
                 seconds = int(time) - (minutes * 60)
                 subtitle = "{:0>2d}:{:0>2d}".format(minutes, seconds)
 
-                title = os.path.splitext(self.songs[item][0])[0]
+                title = os.path.splitext(os.path.basename(self.songs[item][0]))[0]
 
                 # check if this is the current song
                 if self.current_song[1] == self.songs[item][1]:
