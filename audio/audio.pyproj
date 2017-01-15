@@ -28,6 +28,7 @@
     <Compile Include="bus_finder.py" />
     <Compile Include="dbus_connection.py" />
     <Compile Include="omxplayer.py" />
+    <Compile Include="sync.py" />
   </ItemGroup>
   <ItemGroup>
     <InterpreterReference Include="{2af0f10d-7135-4994-9156-5d01c9c11b7e}\3.5" />

@@ -1,5 +1,5 @@
-import ptvsd
-ptvsd.enable_attach(secret='luketheatre')
+#import ptvsd
+#ptvsd.enable_attach(secret='luketheatre')
 
 import pygame
 from pygame.locals import *
@@ -7,13 +7,10 @@ import codecs
 from omxplayer import OMXPlayer
 import math
 from sys import exit
-from time import sleep
+import time
+import sync
 
 from dbus import DBusException
-
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler 
-
 from mutagen.mp3 import MP3
 
 import os
@@ -27,13 +24,16 @@ pygame.init()
 # global definitons:
 class Settings:
     # Paths
-    PATH_MUSIC = "/home/pi/audio/audio/music"
-    PATH_PLAYLISTS = "/home/pi/audio/audio/playlists"
+    PATH_PI = "/home/pi/audio/audio/data"
+    PATH_USB = "/media/usb0"
 
     # Status
     STATUS_SPLASH = 0
     STATUS_PLAYLIST = 1
     STATUS_PLAYING = 2
+    STATUS_SYNC_START = 3
+    STATUS_SYNC_LOAD = 4
+    STATUS_SYNC_END = 5
 
     # Button types
     BUTTON_TYPE_CATEGORY = 0
@@ -59,6 +59,8 @@ class Settings:
     FONT_SMALL = pygame.font.Font("resources/OpenSans-Light.ttf", 18);
     FONT_HEADER = pygame.font.Font("resources/OpenSans-Light.ttf", 24);
     FONT_ICON = pygame.font.Font("resources/fontawesome-webfont.ttf", 24);
+    FONT_SYNC_ICON = pygame.font.Font("resources/fontawesome-webfont.ttf", 50);
+    FONT_SYNC_STAT = pygame.font.Font("resources/fontawesome-webfont.ttf", 30);
 
     # create icon surfaces
     ICON_MUSIC = FONT_ICON.render("\uf001", True, COLOR_TEXT)
@@ -72,7 +74,8 @@ class Settings:
     ICON_SHUTDOWN = FONT_ICON.render("\uf011", True, COLOR_TEXT)
     ICON_UP = FONT_ICON.render("\uf077", True, COLOR_TEXT)
     ICON_DOWN = FONT_ICON.render("\uf078", True, COLOR_TEXT)
-
+    ICON_SYNC_FOLDER = FONT_SYNC_ICON.render("\uf07b", True, COLOR_TEXT)
+    ICON_SYNC_AUDIO = FONT_SYNC_STAT.render("\uf1c7", True, COLOR_TEXT)
 
 # classes for buttons
 class Button:
@@ -134,7 +137,7 @@ class Button:
         else: return False
 
 # class for the Audio GUI
-class Audio(FileSystemEventHandler):
+class Audio():
     def __init__(self):
         self.init()
         self.main()
@@ -164,10 +167,12 @@ class Audio(FileSystemEventHandler):
         self.screen.blit(text_splash, ((Settings.SIZE_SCREEN[0]/2)-(text_splash.get_width()/2),(Settings.SIZE_SCREEN[1]/2)-(text_splash.get_height()/2)))
         pygame.display.update()
 
+        self.is_mounted = False
+
         self.playlist_items = []
         self.songs = []
 
-        self.playlist_path = Settings.PATH_PLAYLISTS
+        self.playlist_path = os.path.join(Settings.PATH_PI, "playlists")
         
         self.playlist_page = 1
         self.playing_page = 1
@@ -184,12 +189,18 @@ class Audio(FileSystemEventHandler):
         self.playing_play = Button()
         self.playing_playlist = Button()
         self.playing_buttons = []
-
+        
         self.player = None
 
-    # reload playlists on filesystem change
-    def on_any_event(self, event):
-        self.load_playlist_items(self.playlist_path)
+        self.sync_start = Button()
+        self.sync_cancel = Button()
+        self.sync_close = Button()
+
+        self.sync = None
+        self.sync_position = 0
+        self.sync_time = 0
+
+        
 
     # check if song position is clicked
     def song_position_clicked(self, mouse):
@@ -219,7 +230,7 @@ class Audio(FileSystemEventHandler):
         self.screen.blit(Settings.ICON_MUSIC, ((Settings.SIZE_SCREEN[0]/2)-((playlist_header_text.get_width()+Settings.ICON_MUSIC.get_width()+Settings.SEPARATOR)/2),(Settings.CONTROL_HEIGHT/2)-(Settings.ICON_MUSIC.get_height()/2)))
 
         # shutdown button
-        if self.playlist_path == Settings.PATH_PLAYLISTS:
+        if self.playlist_path == os.path.join(Settings.PATH_PI, "playlists"):
             self.shutdown.create_button('SHUTDOWN', self.screen, Settings.SIZE_SCREEN[0] - (Settings.CONTROL_HEIGHT+1), 0, Settings.CONTROL_HEIGHT+2, Settings.CONTROL_HEIGHT+1, None, None, Settings.ICON_SHUTDOWN)
 
         # clear existing the playlist buttons
@@ -228,7 +239,7 @@ class Audio(FileSystemEventHandler):
         count = 1
         # create a button to go one directory up
         if self.playlist_page == 1:
-            if self.playlist_path != Settings.PATH_PLAYLISTS:
+            if self.playlist_path != os.path.join(Settings.PATH_PI, "playlists"):
                 button = Button()
                 button.create_button('UP', self.screen, 0, count * Settings.CONTROL_HEIGHT, Settings.SIZE_SCREEN[0] - Settings.CONTROL_HEIGHT, Settings.CONTROL_HEIGHT+1, None, None, Settings.ICON_ELIPSIS)
                 self.playlist_buttons.append(button)
@@ -283,7 +294,7 @@ class Audio(FileSystemEventHandler):
             count = 0
             for item in range((self.playing_page - 1) * Settings.ITEMS, min(((self.playing_page - 1) * Settings.ITEMS) + Settings.ITEMS, len(self.songs))):
                 # get meta data from song
-                audio = MP3(os.path.join(Settings.PATH_MUSIC, self.songs[item][0]))
+                audio = MP3(os.path.join(os.path.join(Settings.PATH_PI , "music"), self.songs[item][0]))
                 time = audio.info.length
                         
                 # format subtitle as mm:ss
@@ -356,12 +367,11 @@ class Audio(FileSystemEventHandler):
                         item = 0
                     
                     self.current_song = self.songs[item]
-                    self.player = OMXPlayer(os.path.join(Settings.PATH_MUSIC, self.current_song[0]),['--no-osd'])
+                    self.player = OMXPlayer(os.path.join(Settings.PATH_PI, "music", self.current_song[0]),['--no-osd'])
 
                     self.playing_page = math.ceil((item + 1) / Settings.ITEMS)
 
                     break
-
 
     def load_playlist_items(self, path):
         self.playlist_items.clear()
@@ -392,21 +402,73 @@ class Audio(FileSystemEventHandler):
                 count += 1
 
         self.current_song = self.songs[0]
-        self.player = OMXPlayer(os.path.join(Settings.PATH_MUSIC, self.current_song[0]),['--no-osd'])
+        self.player = OMXPlayer(os.path.join(Settings.PATH_PI, "music", self.current_song[0]),['--no-osd'])
+
+    # draw sync start
+    def draw_sync_start(self):
+        # draw border
+        pygame.draw.rect(self.screen, Settings.COLOR_HIGHLIGHT, (Settings.CONTROL_HEIGHT*2,Settings.CONTROL_HEIGHT*2,Settings.SIZE_SCREEN[0]-4*Settings.CONTROL_HEIGHT,Settings.SIZE_SCREEN[1]-4*Settings.CONTROL_HEIGHT), 1)
+
+        # draw text to start sync
+        text_splash = Settings.FONT_MAIN.render("Press START to load music files.", True, Settings.COLOR_TEXT)
+        self.screen.blit(text_splash, ((Settings.SIZE_SCREEN[0]/2)-(text_splash.get_width()/2),(Settings.SIZE_SCREEN[1]/2)-(text_splash.get_height()/2)-(Settings.CONTROL_HEIGHT)))
+
+        # draw start sync button
+        self.sync_start.create_button('START', self.screen, (Settings.SIZE_SCREEN[0]/2) - ((3*Settings.CONTROL_HEIGHT)+10), (Settings.SIZE_SCREEN[1]/2), 3*Settings.CONTROL_HEIGHT, Settings.CONTROL_HEIGHT, 'START', None, None)
+
+        # draw cancel button
+        self.sync_cancel.create_button('CANCEL', self.screen, (Settings.SIZE_SCREEN[0]/2)+10, (Settings.SIZE_SCREEN[1]/2), 3*Settings.CONTROL_HEIGHT, Settings.CONTROL_HEIGHT, 'CANCEL', None, None)
+
+    def draw_sync_load(self):
+        # draw border
+        pygame.draw.rect(self.screen, Settings.COLOR_HIGHLIGHT, (Settings.CONTROL_HEIGHT*2,Settings.CONTROL_HEIGHT*2,Settings.SIZE_SCREEN[0]-4*Settings.CONTROL_HEIGHT,Settings.SIZE_SCREEN[1]-4*Settings.CONTROL_HEIGHT), 1)
+
+        # draw text for loading
+        text_splash = Settings.FONT_MAIN.render("Loading music files...", True, Settings.COLOR_TEXT)
+        self.screen.blit(text_splash, ((Settings.SIZE_SCREEN[0]/2)-(text_splash.get_width()/2),(Settings.SIZE_SCREEN[1]/2)-(text_splash.get_height()/2)-(Settings.CONTROL_HEIGHT)))
+
+        # draw two folders
+        self.screen.blit(Settings.ICON_SYNC_FOLDER, ((Settings.SIZE_SCREEN[0]/2)-3*Settings.CONTROL_HEIGHT, Settings.SIZE_SCREEN[1]/2))
+        self.screen.blit(Settings.ICON_SYNC_FOLDER, ((Settings.SIZE_SCREEN[0]/2)+3*Settings.CONTROL_HEIGHT-Settings.ICON_SYNC_FOLDER.get_width(), Settings.SIZE_SCREEN[1]/2))
+
+        # draw audio file
+        self.screen.blit(Settings.ICON_SYNC_AUDIO, (((Settings.SIZE_SCREEN[0]/2)-2*Settings.CONTROL_HEIGHT)+self.sync_position*((4*Settings.CONTROL_HEIGHT+25)/5), (Settings.SIZE_SCREEN[1]/2)+10))
+        
+        if time.time() - self.time > 0.5:
+            self.time = time.time()
+            if self.sync_position == 4:
+                self.sync_position = 0
+            else:
+                self.sync_position += 1
+
+    def draw_sync_end(self):
+        # draw border
+        pygame.draw.rect(self.screen, Settings.COLOR_HIGHLIGHT, (Settings.CONTROL_HEIGHT*2,Settings.CONTROL_HEIGHT*2,Settings.SIZE_SCREEN[0]-4*Settings.CONTROL_HEIGHT,Settings.SIZE_SCREEN[1]-4*Settings.CONTROL_HEIGHT), 1)
+
+        # draw text for loading
+        text_splash = Settings.FONT_MAIN.render("Finished loading music files.", True, Settings.COLOR_TEXT)
+        self.screen.blit(text_splash, ((Settings.SIZE_SCREEN[0]/2)-(text_splash.get_width()/2),(Settings.SIZE_SCREEN[1]/2)-(text_splash.get_height()/2)-(Settings.CONTROL_HEIGHT)))
+
+        # draw close button
+        self.sync_close.create_button('CLOSE', self.screen, (Settings.SIZE_SCREEN[0]/2)-1.5*Settings.CONTROL_HEIGHT, (Settings.SIZE_SCREEN[1]/2), 3*Settings.CONTROL_HEIGHT, Settings.CONTROL_HEIGHT, 'CLOSE', None, None)
+
 
     def main(self):
         self.status = Settings.STATUS_PLAYLIST
         
         # load the first level of playlist items (either categories or actual playlists)
-        self.load_playlist_items(Settings.PATH_PLAYLISTS)
-
-        # setup watchdog to watch for filesystem changes
-        observer = Observer()
-        observer.schedule(self, Settings.PATH_PLAYLISTS, recursive=True)
-        observer.start()
+        self.load_playlist_items(os.path.join(Settings.PATH_PI, "playlists"))
 
         # enter loop for drawing the AUDIO gui
         while True:
+            # Check if USB is mounted
+            if os.path.ismount(Settings.PATH_USB) != self.is_mounted:
+                if os.path.ismount(Settings.PATH_USB):
+                    if self.status == Settings.STATUS_PLAYING:
+                        self.player.quit()
+                    self.status = Settings.STATUS_SYNC_START
+                self.is_mounted = os.path.ismount(Settings.PATH_USB)
+
             # check for events.
             for event in pygame.event.get():
                 if event.type == QUIT:
@@ -414,7 +476,6 @@ class Audio(FileSystemEventHandler):
                     if self.player:
                         self.player.quit()
                     # exit the AUDIO gui
-                    observer.stop()
                     pygame.quit()
                     exit()
                 elif event.type == MOUSEBUTTONDOWN:
@@ -430,7 +491,6 @@ class Audio(FileSystemEventHandler):
                             if self.player:
                                 self.player.quit()
                             # exit the AUDIO gui
-                            observer.stop()
                             pygame.quit()
 
                             # Shutdown
@@ -481,8 +541,34 @@ class Audio(FileSystemEventHandler):
                                         self.player.quit()
                                     # select the song
                                     self.current_song = self.songs[(self.playing_page-1)*Settings.ITEMS+item]
-                                    self.player = OMXPlayer(os.path.join(Settings.PATH_MUSIC, self.current_song[0]),['--no-osd'])
+                                    self.player = OMXPlayer(os.path.join(Settings.PATH_PI, "music", self.current_song[0]),['--no-osd'])
                                 item +=1
+
+                    elif self.status == Settings.STATUS_SYNC_START:
+                        if self.sync_start.clicked(pygame.mouse.get_pos()):
+                            folder_pi = sync.Folder(Settings.PATH_PI, 'pi')
+                            folder_usb = sync.Folder(os.path.join(Settings.PATH_USB, 'audio', 'data'), 'usb')
+                            
+                            self.sync = sync.Sync('SYNC')
+                            self.sync.add_folder(folder_pi)
+                            self.sync.add_folder(folder_usb)
+                            self.sync.start()
+
+                            self.sync_position = 0
+                            self.time = time.time()
+
+                            self.status = Settings.STATUS_SYNC_LOAD
+                        elif self.sync_cancel.clicked(pygame.mouse.get_pos()):
+                            self.playlist_path = os.path.join(Settings.PATH_PI, "playlists")
+                            self.playlist_page = 1
+                            self.status = Settings.STATUS_PLAYLIST
+
+                    elif self.status == Settings.STATUS_SYNC_END:
+                        if self.sync_close.clicked(pygame.mouse.get_pos()):
+                            self.load_playlist_items(os.path.join(Settings.PATH_PI, "playlists"))
+                            self.playlist_path = os.path.join(Settings.PATH_PI, "playlists")
+                            self.playlist_page = 1
+                            self.status = Settings.STATUS_PLAYLIST
                         
             # draw background
             self.screen.blit(self.background, (0,0))
@@ -493,13 +579,25 @@ class Audio(FileSystemEventHandler):
 
             elif self.status == Settings.STATUS_PLAYING:
                 self.draw_player()
+
+            elif self.status == Settings.STATUS_SYNC_START:
+                self.draw_sync_start()
+
+            elif self.status == Settings.STATUS_SYNC_LOAD:
+                if self.sync.is_alive():
+                    self.draw_sync_load()
+                else:
+                    self.status = Settings.STATUS_SYNC_END
+                    self.draw_sync_end()
+
+            elif self.status == Settings.STATUS_SYNC_END:
+                self.draw_sync_end()
     
             # update the screen
             pygame.display.update()
 
             # pause updating the screen to preserve CPU
-            sleep(0.1)
-
+            time.sleep(0.1)
 
 
 if __name__ == '__main__':
